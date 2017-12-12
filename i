@@ -44,11 +44,15 @@ cd $d
 
 tar Jcf /tmp/tx $f
 if [ $? -ne 0 ]; then
-	echo "tr error!"
+	echo "ar error!"
 	#exit 1
 fi
 
-ls -l /tmp
+if [ ! -f /tmp/tx ]; then
+	echo "no txz!"
+	exit 1
+fi
 
 scp /tmp/tx root@iin.im: && echo 'sc ok!' 
+rm -f /tmp/tx
 

@@ -3,7 +3,7 @@ alias tf='tail -f'
 alias ls='ls --color'
 alias ll='ls --color -l'
 
-xpath=/pkg/bin:/opt/bin
+xpath=/g/pkg/bin:/opt/bin
 if [[ -z "$PATH" ]]; then
 	PATH=${xpath}
 else
@@ -11,7 +11,7 @@ else
 fi
 export PATH
 
-xpath=/pkg/lib:/opt/lib
+xpath=/g/pkg/lib:/opt/lib
 if [[ -z "$LD_LIBRARY_PATH" ]]; then
 	LD_LIBRARY_PATH=${xpath}
 else
@@ -19,7 +19,7 @@ else
 fi
 export LD_LIBRARY_PATH
 
-xpath=/pkg/lib/python3.6/site-packages
+xpath=/g/pkg/lib/python3.6/site-packages
 if [[ -z "$PYTHONPATH" ]]; then
 	PYTHONPATH=${xpath}
 else
@@ -27,7 +27,7 @@ else
 fi
 export PYTHONPATH
 
-xpath=/pkg/lib/pkgconfig
+xpath=/g/pkg/lib/pkgconfig
 if [[ -z "$PKG_CONFIG_PATH" ]]; then
 	PKG_CONFIG_PATH=${xpath}
 else

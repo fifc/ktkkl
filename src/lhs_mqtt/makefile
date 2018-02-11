@@ -2,9 +2,9 @@
 
 CC=gcc
 CXX=g++
-LDFLAGS=-g -O2 -L../lhs_proto -L/home/pkg/lib -pthread -Wl,-rpath,/home/pkg/lib
-CFLAGS=-I../lhs_proto -I../lhs_server/lib -I/home/pkg/include/ -pthread -g -O2 -MD -MP -Wall -Werror
-CXXFLAGS=-I../lhs_proto -I../lhs_server/lib -I/home/pkg/include/ -pthread -g -O2 -MD -MP -Wall -Werror
+LDFLAGS=-g -O2 -L../lhs_proto -L/g/pkg/lib -pthread -Wl,-rpath,/g/pkg/lib
+CFLAGS=-I../lhs_proto -I../lhs_server/lib -I/g/pkg/include/ -pthread -g -O2 -MD -MP -Wall -Werror
+CXXFLAGS=-I../lhs_proto -I../lhs_server/lib -I/g/pkg/include/ -pthread -g -O2 -MD -MP -Wall -Werror
 
 
 all : auth_plugin.so mqttest

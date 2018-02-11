@@ -17,8 +17,8 @@ index 71f17e5..f85b520 100644
  ifeq ($(WITH_WEBSOCKETS),yes)
 -	BROKER_CFLAGS:=$(BROKER_CFLAGS) -DWITH_WEBSOCKETS
 -	BROKER_LIBS:=$(BROKER_LIBS) -lwebsockets
-+	BROKER_CFLAGS:=$(BROKER_CFLAGS) -I/home/pkg/include -DWITH_WEBSOCKETS
-+	BROKER_LIBS:=$(BROKER_LIBS) -L/home/pkg/lib -lwebsockets
++	BROKER_CFLAGS:=$(BROKER_CFLAGS) -I/g/pkg/include -DWITH_WEBSOCKETS
++	BROKER_LIBS:=$(BROKER_LIBS) -L/g/pkg/lib -lwebsockets
  endif
  
  ifeq ($(UNAME),SunOS)
@@ -27,7 +27,7 @@ index 71f17e5..f85b520 100644
  
  INSTALL?=install
 -prefix=/usr/local
-+prefix=/home/pkg
++prefix=/g/pkg
  mandir=${prefix}/share/man
  localedir=${prefix}/share/locale
  STRIP?=strip

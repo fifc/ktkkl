@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<script src="js/mqtt.js"></script>
+		<script src="js/long.min.js"></script>
+		<script src="js/bytebuffer.min.js"></script>
+		<script src="js/protobuf.min.js"></script>
+		<script>
+			if (typeof dcodeIO === 'protobuf') {
+				throw(new Error("ProtoBuf.js is not present. Please see www/index.html for manual setup instructions."));
+			}
+
+var ClientInfo;
+var NearbyUser;
+var NearbyUpdate;
+
+protobuf.load("proto/js.proto", function(err, root){
+	if (err)
+		throw err;
+	ClientInfo = root.lookup("ClientInfo");
+	NearbyUser = root.lookup("NearbyUser");
+	NearbyUpdate = root.lookup("NearbyUpdate");
+});
+
+		</script>
+
+
+	</head>
+	<body>
+		<textarea id="log" style="width: 100%; height: 200px"></textarea><br />
+		<label>uid</label><input type="text" id="uidbox" value="20170" size="10" />
+		<label>lng</label><input type="text" id="lngbox" size="12" />
+		<label>lat</label><input type="text" id="latbox" size="12" /><button onclick="getNearby()">😜</button><br />
+		<input type="text" id="imbox" value="hello world!" /> <button onclick="sendIm()">Send</button>
+<script>
+
+var log = document.getElementById("log");
+var im = document.getElementById("imbox");
+var uidbox = document.getElementById("uidbox");
+var lngbox = document.getElementById("lngbox");
+var latbox = document.getElementById("latbox");
+var startTime = 0
+var uid = -1
+
+//var mosq_url = "ws://test.mosquitto.org:8080";
+//var mosq_url = "wss://codein.tv:1880";
+var mosq_url = "wss://" + window.location.hostname + ":1880";
+var options = {
+  username: "codein_os_js_",
+  password: "js.codein.tv",
+  clientId: "js_",
+  encoding: "binary",
+  protocolVersion: 4,
+  rejectUnauthorized: false
+}
+
+var rndId = Math.floor(Math.random()*1e16).toString(16);
+options.clientId += rndId;
+options.username += rndId;
+var client = mqtt.connect(mosq_url, options);
+
+function sendIm() {
+	startTime = new Date().getTime();
+	client.publish("mqtt/demo", im.value);
+}
+
+var uid = -1;
+
+function checkUid() {
+	var uidval = -1;
+	if (uidbox.value) {
+		var uidstr = uidbox.value.replace(/(^\s*)|(\s*$)/g, '');
+		var uidval = parseInt(uidstr);
+		if (isNaN(uidval)) {
+			alert("invalid uid: " + uidstr);
+			return -1;
+		}
+	}
+
+	if (uidval == -1) {
+		alert("please input uid!");
+		return -1;
+	}
+
+	if (uid != uidval) {
+		if (uid != -1) {
+			client.unsubscribe("codein/livej/" + uid);
+		}
+		uid = uidval;
+		client.subscribe("codein/livej/" + uid);
+	}
+
+	return 0;
+}
+
+function getNearby() {
+	if (checkUid() != 0) {
+		return;
+	}
+	var req = ClientInfo.create({uid: uid, lan: 1, deviceId: "js_simulate_001", gps: {latitude:22.123456, longitude: 113.654321}});
+	log.value = "=> " + JSON.stringify(req.toJSON()) + "\n";
+        var data = ClientInfo.encode(req).finish();
+	var ab = new ArrayBuffer(data.length + 10);
+	var view = new DataView(ab);
+	view.setInt8(0, 1);
+	view.setInt8(1, 2);
+	view.setInt8(2, 0);
+	view.setInt8(3, 0);
+	view.setInt8(4, 0);
+	view.setInt8(5, 0);
+	view.setInt8(6, 0);
+	view.setInt8(7, 0);
+	view.setInt8(8, 1);
+	client.publish("codein/live", new Uint8Array(ab), {qos: 1});
+}
+
+function onLivejMsg(topic, payload) {
+}
+
+client.subscribe("mqtt/demo");
+log.value = ""; // Clear log on reload
+
+client.on("message", function(topic, payload) {
+	if (topic.startsWith("codein/livej")) {
+		onLivejMsg(topic, payload);
+		return;
+	}
+	elapsed = new Date().getTime() - startTime;
+	log.value += "<= " + [topic, payload].join(": ") + " [" + elapsed + "ms]\n";
+	//client.end();
+	//setTimeout(function () {
+	//		client.publish("mqtt/demo", "hello world!");
+	//		}, 3000);
+});
+
+</script>
+
+	</body>
+</html>

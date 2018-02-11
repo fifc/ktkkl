@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN" xml:lang="zh-CN">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>词库</title>
+    <script src="js/long.min.js"></script>
+    <script src="js/bytebuffer.min.js"></script>
+    <script src="js/protobuf.min.js"></script>
+    <script>
+      if (typeof dcodeIO === 'protobuf') {
+        throw(new Error("ProtoBuf.js is not present. Please see www/index.html for manual setup instructions."));
+      }
+
+      var AddMagicWordsRequest;
+      var AddMagicWordsReply;
+      var GetMagicWordsRequest;
+      var GetMagicWordsReply;
+      protobuf.load("proto/js.proto", function(err, root){
+        if (err)
+          throw err;
+        AddMagicWordsRequest = root.lookup("AddMagicWordsRequest");
+        AddMagicWordsReply = root.lookup("AddMagicWordsReply");
+        GetMagicWordsRequest = root.lookup("GetMagicWordsRequest");
+        GetMagicWordsReply = root.lookup("GetMagicWordsReply");
+        GetGameRequest = root.lookup("GetGameRequest");
+        GetGameReply = root.lookup("GetGameReply");
+        SetGamePoiRequest = root.lookup("SetGamePoiRequest");
+        SetGamePoiReply = root.lookup("SetGamePoiReply");
+        PingRequest = root.lookup("PingRequest");
+        PingReply = root.lookup("PingReply");
+      });
+
+    </script>
+
+	</head>
+	<body>
+		<p id="body_title"></p><a href="/im" >MQTT</a>
+        <textarea id="mwords" style="width: 100%; height: 50px"></textarea><br />
+        <label>类别</label>
+        <select id="wtype">
+          <option value="ORIGIN">-- 原创 --</option>
+          <option value="FASHION">-- 时尚 --</option>
+          <option value="TYPICAL">-- 经典 --</option>
+        </select>
+        <label>语言</label>
+        <select name="lang">
+              <option value="zh_CN">-- 简体中文 --</option>
+              <option value="zh_TW">-- 繁体中文 --</option>
+              <option value="en_US">-- 英语(美国) --</option>
+              <option value="sp">-- 西班牙语 --</option>
+              <option value="ja">-- 日语 --</option>
+        </select>
+        <button onclick="submmit()">提交</button>
+        <label>条数</label><input type="text" id="mw_num" value="10" size="4" /><button onclick="getWords()">查询</button>
+        <br /> <br />
+
+        <textarea id="log_box" style="width: 100%; height: 200px" readonly="readonly"></textarea><br />
+        <button onclick="ping()">GW</button>
+        <button onclick="setGamePoi()">POI</button>
+        <button onclick="sslTest()">SSL</button>
+        <input type="text" id="uid_box" value="2017000" size="10" /><button onclick="getGame()">✔</button>
+	<script>
+
+document.getElementById('body_title').innerHTML = (new Date()).getFullYear() + "年度热词征集"
+
+var deviceId_str = Math.floor(Math.random()*1e16).toString(16);
+var mwords = document.getElementById("mwords");
+var mw_num = document.getElementById("mw_num");
+var log_box = document.getElementById("log_box");
+var uid_box = document.getElementById("uid_box");
+var httpRequest = new XMLHttpRequest();
+var httpGetRequest = new XMLHttpRequest();
+var startTime;
+
+function getGame() {
+	if (!httpRequest) {
+		alert('Giving up :( Cannot create an XMLHTTP instance');
+		return false;
+	}
+
+	httpRequest.onreadystatechange = function () {
+		if (httpRequest.readyState === XMLHttpRequest.DONE) {
+			var elapsed = new Date().getTime() - startTime;
+			if (httpRequest.status === 200) {
+				var text = "request completed in " + elapsed.toString() + "ms\n";
+				var arrbuffer = httpRequest.response;
+				if (arrbuffer) {
+					var buf = new Uint8Array(arrbuffer);
+					var rep = GetGameReply.decode(buf);
+					if (rep.errInfo.err == 0) {
+						text += rep.gameInfo;
+						log_box.value = text;
+					} else {
+						log_box.value = text + rep.errInfo.msg;
+					}
+					text = null;
+					log_box.value += "\ntotal " + rep.total;
+					if (rep.idList.length > 0) {
+						log_box.value += ":";
+					}
+					for (id of rep.idList) {
+						log_box.value += " " + id.toString();
+					}
+				}
+			} else {
+				alert('There was a problem with the request.');
+			}
+		}
+	}
+
+	var req;
+	var id = parseInt(uid_box.value);
+	if (isNaN(id)) {
+		var t = uid_box.value.substr(0,1);
+		id = parseInt(uid_box.value.substr(1));
+		if (t == "g" || t == "G") {
+			req = GetGameRequest.create({gameId: id});
+		} else if (t == "u" || t == "U") {
+			req = GetGameRequest.create({uid: id});
+		} else {
+			alert("invalid input!");
+			return;
+		}
+	} else {
+		req = GetGameRequest.create({uid: id});
+	}
+	startTime = new Date().getTime();
+	httpRequest.open("POST", "/api/GetGame", true);
+	httpRequest.responseType = "arraybuffer";
+	httpRequest.send(GetGameRequest.encode(req).finish());
+}
+
+function sslTest() {
+	if (!httpGetRequest) {
+		alert('Giving up :( Cannot create an XMLHTTP instance');
+		return false;
+	}
+
+	httpGetRequest.onreadystatechange = function onReply() {
+		if (httpGetRequest.readyState === XMLHttpRequest.DONE) {
+			var elapsed = new Date().getTime() - startTime;
+			if (httpGetRequest.status === 200) {
+				var text = "request completed in " + elapsed.toString() + "ms\n";
+				var resp = httpGetRequest.responseText;
+				if (resp) {
+					log_box.value += text + new Date().toLocaleTimeString() + ": " + httpGetRequest.responseURL + " success\n[server] " + resp;
+					text = null;
+				} else {
+					log_box.value += "empty response";
+				}
+			} else {
+				alert("There was a problem with the request. elapsed " + elapsed + "ms");
+			}
+		}
+	}
+
+	//var url = window.location.protocol + "//" + window.location.host + ":1001/ssl";
+	var url = "https://" + window.location.host + ":1001/ssl";
+	log_box.value = new Date().toLocaleTimeString() + ": sending request to " + url + " ...\n";
+
+	startTime = new Date().getTime();
+	httpGetRequest.open("get", url);
+	httpGetRequest.setRequestHeader("Content-Type", "text/plain");
+	httpGetRequest.responseType = "text/plain";
+	httpGetRequest.send(null);
+}
+
+function setGamePoi() {
+	if (!httpRequest) {
+		alert('Giving up :( Cannot create an XMLHTTP instance');
+		return false;
+	}
+
+	httpRequest.onreadystatechange = function () {
+		if (httpRequest.readyState === XMLHttpRequest.DONE) {
+			var elapsed = new Date().getTime() - startTime;
+			if (httpRequest.status === 200) {
+				var text = "request completed in " + elapsed.toString() + "ms\n";
+				var arrbuffer = httpRequest.response;
+				if (arrbuffer) {
+					var buf = new Uint8Array(arrbuffer);
+					var rep = SetGamePoiReply.decode(buf);
+					if (rep.errInfo.err == 0) {
+						log_box.value += text + new Date().toLocaleTimeString() + ": " + httpRequest.responseURL + " success\n[server] " + rep.timeUs + "us";
+						text = null;
+					} else {
+						log_box.value = rep.errInfo.msg;
+					}
+				}
+			} else {
+				alert("There was a problem with the request. elapsed " + elapsed + "ms");
+			}
+		}
+	}
+
+	if (httpRequest.responseURL && httpRequest.responseURL.endsWith("SetGamePoi")) {
+		log_box.value = new Date().toLocaleTimeString() + ": sending request to " + httpRequest.responseURL + " ...\n";
+	} else {
+		log_box.value = new Date().toLocaleTimeString() + ": sending request to " + window.location + " ...\n";
+	}
+
+	startTime = new Date().getTime();
+	httpRequest.open("POST", "/api/SetGamePoi", true);
+	httpRequest.responseType = "arraybuffer";
+	var uid = parseInt(uid_box.value);
+	if (isNaN(uid)) {
+		alert("invalid uid " + uid_box.value + " :(");
+		return false;
+	}
+	var req = SetGamePoiRequest.create({gameId: 9090000000000000000, poi: {id:12345}, timeMs: startTime, clientInfo: {uid: uid, lan: 1, deviceId: "js_simulate_001", gps: {latitude:22.123456, longitude: 113.654321}}});
+	httpRequest.send(SetGamePoiRequest.encode(req).finish());
+}
+function ping() {
+	if (!httpRequest) {
+		alert('Giving up :( Cannot create an XMLHTTP instance');
+		return false;
+	}
+
+	httpRequest.onreadystatechange = function onReply() {
+		if (httpRequest.readyState === XMLHttpRequest.DONE) {
+			var elapsed = new Date().getTime() - startTime;
+			if (httpRequest.status === 200) {
+				var text = "request completed in " + elapsed.toString() + "ms\n";
+				var arrbuffer = httpRequest.response;
+				if (arrbuffer) {
+					var buf = new Uint8Array(arrbuffer);
+					var rep = PingReply.decode(buf);
+					if (rep.errInfo.err == 0) {
+						log_box.value += text + new Date().toLocaleTimeString() + ": " + httpRequest.responseURL + " success";
+						text = null;
+					} else {
+						log_box.value = rep.errInfo.msg;
+					}
+				}
+			} else {
+				alert("There was a problem with the request. elapsed " + elapsed + "ms");
+			}
+		}
+	}
+
+	if (httpRequest.responseURL && httpRequest.responseURL.endsWith("Ping")) {
+		log_box.value = new Date().toLocaleTimeString() + ": sending request to " + httpRequest.responseURL + " ...\n";
+	} else {
+		log_box.value = new Date().toLocaleTimeString() + ": sending request to " + window.location + " ...\n";
+	}
+
+	startTime = new Date().getTime();
+	httpRequest.open("POST", "/api/Ping", true);
+	httpRequest.responseType = "arraybuffer";
+	var req = PingRequest.create({clientInfo: {lan: 1, deviceId: deviceId_str}});
+	httpRequest.send(PingRequest.encode(req).finish());
+}
+
+function getWords() {
+	if (!httpRequest) {
+		alert('Giving up :( Cannot create an XMLHTTP instance');
+		return false;
+	}
+	var num = parseInt(mw_num.value);
+	httpRequest.onreadystatechange = showMagicWords;
+	startTime = new Date().getTime();
+	httpRequest.open('POST', '/api/GetMagicWords', true);
+	httpRequest.responseType = "arraybuffer";
+	var req = GetMagicWordsRequest.create({gameId: -num, clientInfo: {lan: 1, deviceId: deviceId_str}});
+	httpRequest.send(GetMagicWordsRequest.encode(req).finish());
+}
+
+function showMagicWords() {
+	var elapsed = new Date().getTime() - startTime;
+	var text = "request completed in " + elapsed.toString() + "ms\n";
+	if (httpRequest.readyState === XMLHttpRequest.DONE) {
+		if (httpRequest.status === 200) {
+			var arrbuffer = httpRequest.response;
+			if (arrbuffer) {
+				var buf = new Uint8Array(arrbuffer);
+				var rep = GetMagicWordsReply.decode(buf);
+				if (rep.errInfo.err == 0) {
+					if (rep.timeUs) {
+						text += "[server] " + rep.timeUs + "us\n"
+					}
+					for (i=0; i<rep.list.length; ++i) {
+						text += rep.list[i].id + "\t" + rep.list[i].words + "\n";
+					}
+					log_box.value = text;
+					text = null;
+				} else {
+					log_box.value = rep.errInfo.msg;
+				}
+			}
+		} else {
+			alert('There was a problem with the request.');
+		}
+	}
+}
+
+function submmit() {
+	if (!httpRequest) {
+		alert("Giving up :( Cannot create an XMLHTTP instance");
+		return false;
+	}
+
+	content = mwords.value ? mwords.value.trim() : "";
+	if (content.length == 0) {
+		alert('请输入内容！');
+		return false;
+	}
+
+	httpRequest.onreadystatechange = alertContents;
+	startTime = new Date().getTime();
+	httpRequest.open('POST', '/api/AddMagicWords', true);
+	httpRequest.responseType = "arraybuffer";
+	var req = AddMagicWordsRequest.create({type: 0, lang: 1, words: content, clientInfo: {deviceId: "000-123456789"}});
+	httpRequest.send(AddMagicWordsRequest.encode(req).finish());
+}
+
+function alertContents() {
+	if (httpRequest.readyState === XMLHttpRequest.DONE) {
+		var elapsed = new Date().getTime() - startTime;
+		if (httpRequest.status === 200) {
+			mwords.value = "";
+			var arrbuffer = httpRequest.response;
+			if (arrbuffer) {
+				var buf = new Uint8Array(arrbuffer);
+				var rep = AddMagicWordsReply.decode(buf);
+				if (rep.errInfo.err == 0) {
+					var time = new Date().toLocaleTimeString();
+					log_box.value = "request completed in " + elapsed.toString() + "ms\n[" + time + "] 添加成功! id: " + rep.id;
+				} else {
+					log_box.value = rep.errInfo.msg;
+				}
+				if (rep.timeUs) {
+					log_box.value += "\n[server] " + rep.timeUs + "us";
+				}
+			}
+		} else {
+			alert('There was a problem with the request. elapsed ' + elapsed + 'ms');
+		}
+	}
+}
+	</script>
+	</body>
+</html>

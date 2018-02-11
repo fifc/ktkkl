@@ -1,0 +1,1 @@
+proto.jar need to be built from respository lhs_kt and copied here

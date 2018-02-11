@@ -1,0 +1,319 @@
+diff --git a/config.mk b/config.mk
+index 71f17e5..f85b520 100644
+--- a/config.mk
++++ b/config.mk
+@@ -65,7 +65,7 @@ WITH_SRV:=yes
+ WITH_UUID:=yes
+ 
+ # Build with websockets support on the broker.
+-WITH_WEBSOCKETS:=no
++WITH_WEBSOCKETS:=yes
+ 
+ # Use elliptic keys in broker
+ WITH_EC:=yes
+@@ -225,8 +225,8 @@ ifeq ($(WITH_SRV),yes)
+ endif
+ 
+ ifeq ($(WITH_WEBSOCKETS),yes)
+-	BROKER_CFLAGS:=$(BROKER_CFLAGS) -DWITH_WEBSOCKETS
+-	BROKER_LIBS:=$(BROKER_LIBS) -lwebsockets
++	BROKER_CFLAGS:=$(BROKER_CFLAGS) -I/home/pkg/include -DWITH_WEBSOCKETS
++	BROKER_LIBS:=$(BROKER_LIBS) -L/home/pkg/lib -lwebsockets
+ endif
+ 
+ ifeq ($(UNAME),SunOS)
+@@ -249,7 +249,7 @@ ifeq ($(WITH_DOCS),yes)
+ endif
+ 
+ INSTALL?=install
+-prefix=/usr/local
++prefix=/home/pkg
+ mandir=${prefix}/share/man
+ localedir=${prefix}/share/locale
+ STRIP?=strip
+diff --git a/lib/net_mosq.c b/lib/net_mosq.c
+index 063c4a2..0cc1527 100644
+--- a/lib/net_mosq.c
++++ b/lib/net_mosq.c
+@@ -1086,7 +1086,10 @@ int _mosquitto_packet_read(struct mosquitto *mosq)
+ 
+ 		if(mosq->in_packet.remaining_length > 0){
+ 			mosq->in_packet.payload = _mosquitto_malloc(mosq->in_packet.remaining_length*sizeof(uint8_t));
+-			if(!mosq->in_packet.payload) return MOSQ_ERR_NOMEM;
++			if(!mosq->in_packet.payload) {
++        _mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "mosq->in_packet.remaining_length = %ld\n",(long)mosq->in_packet.remaining_length);
++        return MOSQ_ERR_NOMEM;
++      }
+ 			mosq->in_packet.to_process = mosq->in_packet.remaining_length;
+ 		}
+ 	}
+@@ -1135,6 +1138,10 @@ int _mosquitto_packet_read(struct mosquitto *mosq)
+ 	}
+ #  endif
+ 	rc = mqtt3_packet_handle(db, mosq);
++  if (rc != 0) {
++    int cmd = (mosq->in_packet.command)&0xF0;
++    _mosquitto_log_printf(mosq, MOSQ_LOG_ERR, "Error: mqtt3_packet_handle(cmd=%d) returned %d", cmd, rc);
++  }
+ #else
+ 	rc = _mosquitto_packet_handle(mosq);
+ #endif
+diff --git a/src/loop.c b/src/loop.c
+index bf4876b..1ea26c4 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -80,7 +80,7 @@ static void temp__expire_websockets_clients(struct mosquitto_db *db)
+ 						_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "Client %s has exceeded timeout, disconnecting.", id);
+ 					}
+ 					/* Client has exceeded keepalive*1.5 */
+-					do_disconnect(db, context);
++					do_disconnect(db, context, "timeout");
+ 				}
+ 			}
+ 		}
+@@ -203,7 +203,7 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
+ 						context->pollfd_index = pollfd_index;
+ 						pollfd_index++;
+ 					}else{
+-						do_disconnect(db, context);
++						do_disconnect(db, context, "mqtt3_db_message_write error");
+ 					}
+ 				}else{
+ 					if(db->config->connection_messages == true){
+@@ -215,7 +215,7 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
+ 						_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "Client %s has exceeded timeout, disconnecting.", id);
+ 					}
+ 					/* Client has exceeded keepalive*1.5 */
+-					do_disconnect(db, context);
++					do_disconnect(db, context, "timeout 1");
+ 				}
+ 			}
+ 		}
+@@ -334,7 +334,7 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
+ #endif
+ 						context->clean_session = true;
+ 						context->state = mosq_cs_expiring;
+-						do_disconnect(db, context);
++						do_disconnect(db, context, "due to timeout");
+ 					}
+ 				}
+ 			}
+@@ -422,7 +422,7 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
+ 	return MOSQ_ERR_SUCCESS;
+ }
+ 
+-void do_disconnect(struct mosquitto_db *db, struct mosquitto *context)
++void do_disconnect(struct mosquitto_db *db, struct mosquitto *context, const char *trace_msg)
+ {
+ 	char *id;
+ 
+@@ -452,9 +452,9 @@ void do_disconnect(struct mosquitto_db *db, struct mosquitto *context)
+ 				id = "<unknown>";
+ 			}
+ 			if(context->state != mosq_cs_disconnecting){
+-				_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "Socket error on client %s, disconnecting.", id);
++				_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "Socket error on client %s, disconnecting. %s", id, trace_msg);
+ 			}else{
+-				_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "Client %s disconnected.", id);
++				_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "Client %s disconnected. %s", id, trace_msg);
+ 			}
+ 		}
+ 		mqtt3_context_disconnect(db, context);
+@@ -513,12 +513,12 @@ static void loop_handle_reads_writes(struct mosquitto_db *db, struct pollfd *pol
+ 						context->state = mosq_cs_new;
+ 					}
+ 				}else{
+-					do_disconnect(db, context);
++					do_disconnect(db, context, "SO_ERROR");
+ 					continue;
+ 				}
+ 			}
+ 			if(_mosquitto_packet_write(context)){
+-				do_disconnect(db, context);
++				do_disconnect(db, context, "pack write error");
+ 				continue;
+ 			}
+ 		}
+@@ -542,14 +542,17 @@ static void loop_handle_reads_writes(struct mosquitto_db *db, struct pollfd *pol
+ 		if(pollfds[context->pollfd_index].revents & POLLIN){
+ #endif
+ 			do{
+-				if(_mosquitto_packet_read(db, context)){
+-					do_disconnect(db, context);
++				int rc = _mosquitto_packet_read(db, context);
++				if (rc) {
++          char buf[100];
++          sprintf(buf, "[%s]packet read error: %d", __func__, rc);
++					do_disconnect(db, context, buf);
+ 					continue;
+ 				}
+ 			}while(SSL_DATA_PENDING(context));
+ 		}
+ 		if(context->pollfd_index >= 0 && pollfds[context->pollfd_index].revents & (POLLERR | POLLNVAL | POLLHUP)){
+-			do_disconnect(db, context);
++			do_disconnect(db, context, "poll error");
+ 			continue;
+ 		}
+ 	}
+diff --git a/src/mosquitto_broker.h b/src/mosquitto_broker.h
+index f33007c..d553e24 100644
+--- a/src/mosquitto_broker.h
++++ b/src/mosquitto_broker.h
+@@ -238,6 +238,7 @@ struct _mosquitto_auth_plugin{
+ 	int (*acl_check)(void *user_data, const char *clientid, const char *username, const char *topic, int access);
+ 	int (*unpwd_check)(void *user_data, const char *username, const char *password);
+ 	int (*psk_key_get)(void *user_data, const char *hint, const char *identity, char *key, int max_key_len);
++	int (*connect_check)(void *user_data, const char *username, const char *password, const char *clientid, int sock);
+ };
+ 
+ struct mosquitto_db{
+@@ -512,6 +513,6 @@ struct lws_context *mosq_websockets_init(struct _mqtt3_listener *listener, int l
+ struct libwebsocket_context *mosq_websockets_init(struct _mqtt3_listener *listener, int log_level);
+ #  endif
+ #endif
+-void do_disconnect(struct mosquitto_db *db, struct mosquitto *context);
++void do_disconnect(struct mosquitto_db *db, struct mosquitto *context, const char *trace_msg);
+ 
+ #endif
+diff --git a/src/mosquitto_plugin.h b/src/mosquitto_plugin.h
+index 5b6449c..d68beb6 100644
+--- a/src/mosquitto_plugin.h
++++ b/src/mosquitto_plugin.h
+@@ -200,6 +200,7 @@ int mosquitto_auth_acl_check(void *user_data, const char *clientid, const char *
+  * error.
+  */
+ int mosquitto_auth_unpwd_check(void *user_data, const char *username, const char *password);
++int mosquitto_auth_connect_check(void *user_data, const char *username, const char *password, const char *clientid, int sd);
+ 
+ /*
+  * Function: mosquitto_psk_key_get
+diff --git a/src/read_handle_server.c b/src/read_handle_server.c
+index 6be6a25..faeef2b 100644
+--- a/src/read_handle_server.c
++++ b/src/read_handle_server.c
+@@ -219,6 +219,7 @@ int mqtt3_handle_connect(struct mosquitto_db *db, struct mosquitto *context)
+ 				client_id = client_id_gen(db);
+ 				if(!client_id){
+ 					rc = MOSQ_ERR_NOMEM;
++_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "client id gen error\n");
+ 					goto handle_connect_error;
+ 				}
+ 			}
+@@ -237,6 +238,7 @@ int mqtt3_handle_connect(struct mosquitto_db *db, struct mosquitto *context)
+ 	if(will){
+ 		will_struct = _mosquitto_calloc(1, sizeof(struct mosquitto_message));
+ 		if(!will_struct){
++_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "will struct calloc error\n");
+ 			rc = MOSQ_ERR_NOMEM;
+ 			goto handle_connect_error;
+ 		}
+@@ -415,6 +417,16 @@ int mqtt3_handle_connect(struct mosquitto_db *db, struct mosquitto *context)
+ 	}
+ #endif
+ 
++   if(db->auth_plugin.lib) {
++      rc = db->auth_plugin.connect_check(db->auth_plugin.user_data, context->username, context->password, client_id, context->sock);
++		  if (rc != MOSQ_ERR_SUCCESS ) {
++			    _mosquitto_send_connack(context, 0, CONNACK_REFUSED_NOT_AUTHORIZED);
++			    mqtt3_context_disconnect(db, context);
++			    rc = 1;
++			    goto handle_connect_error;
++		  }
++  }
++
+ 	if(context->listener && context->listener->use_username_as_clientid){
+ 		if(context->username){
+ 			_mosquitto_free(client_id);
+@@ -480,7 +492,7 @@ int mqtt3_handle_connect(struct mosquitto_db *db, struct mosquitto *context)
+ 
+ 		found_context->clean_session = true;
+ 		found_context->state = mosq_cs_disconnecting;
+-		do_disconnect(db, found_context);
++		do_disconnect(db, found_context, "connected via other device");
+ 	}
+ 
+ 	/* Associate user with its ACL, assuming we have ACLs loaded. */
+@@ -608,12 +620,12 @@ int mqtt3_handle_disconnect(struct mosquitto_db *db, struct mosquitto *context)
+ 	_mosquitto_log_printf(NULL, MOSQ_LOG_DEBUG, "Received DISCONNECT from %s", context->id);
+ 	if(context->protocol == mosq_p_mqtt311){
+ 		if((context->in_packet.command&0x0F) != 0x00){
+-			do_disconnect(db, context);
++			do_disconnect(db, context, "client request for close");
+ 			return MOSQ_ERR_PROTOCOL;
+ 		}
+ 	}
+ 	context->state = mosq_cs_disconnecting;
+-	do_disconnect(db, context);
++	do_disconnect(db, context, "disconnecting");
+ 	return MOSQ_ERR_SUCCESS;
+ }
+ 
+diff --git a/src/security.c b/src/security.c
+index 67a4f79..783bb7c 100644
+--- a/src/security.c
++++ b/src/security.c
+@@ -32,6 +32,7 @@ typedef int (*FUNC_auth_plugin_security_cleanup)(void *, struct mosquitto_auth_o
+ typedef int (*FUNC_auth_plugin_acl_check)(void *, const char *, const char *, const char *, int);
+ typedef int (*FUNC_auth_plugin_unpwd_check)(void *, const char *, const char *);
+ typedef int (*FUNC_auth_plugin_psk_key_get)(void *, const char *, const char *, char *, int);
++typedef int (*FUNC_auth_plugin_connect_check)(void *, const char *, const char *, const char *, int);
+ 
+ void LIB_ERROR(void)
+ {
+@@ -126,6 +127,14 @@ int mosquitto_security_module_init(struct mosquitto_db *db)
+ 			return 1;
+ 		}
+ 
++		if(!(db->auth_plugin.connect_check = (FUNC_auth_plugin_connect_check)LIB_SYM(lib, "mosquitto_auth_connect_check"))){
++			_mosquitto_log_printf(NULL, MOSQ_LOG_ERR,
++					"Error: Unable to load auth plugin function mosquitto_auth_connect_check().");
++			LIB_ERROR();
++			LIB_CLOSE(lib);
++			return 1;
++		}
++
+ 		if(!(db->auth_plugin.psk_key_get = (FUNC_auth_plugin_psk_key_get)LIB_SYM(lib, "mosquitto_auth_psk_key_get"))){
+ 			_mosquitto_log_printf(NULL, MOSQ_LOG_ERR,
+ 					"Error: Unable to load auth plugin function mosquitto_auth_psk_key_get().");
+diff --git a/src/security_default.c b/src/security_default.c
+index c408582..241c15b 100644
+--- a/src/security_default.c
++++ b/src/security_default.c
+@@ -756,13 +756,13 @@ int mosquitto_security_apply_default(struct mosquitto_db *db)
+ 		/* Check for anonymous clients when allow_anonymous is false */
+ 		if(!allow_anonymous && !context->username){
+ 			context->state = mosq_cs_disconnecting;
+-			do_disconnect(db, context);
++			do_disconnect(db, context, "username not specified");
+ 			continue;
+ 		}
+ 		/* Check for connected clients that are no longer authorised */
+ 		if(mosquitto_unpwd_check_default(db, context->username, context->password) != MOSQ_ERR_SUCCESS){
+ 			context->state = mosq_cs_disconnecting;
+-			do_disconnect(db, context);
++			do_disconnect(db, context, "auth check fail");
+ 			continue;
+ 		}
+ 		/* Check for ACLs and apply to user. */
+diff --git a/src/websockets.c b/src/websockets.c
+index dde0c9c..75f53f7 100644
+--- a/src/websockets.c
++++ b/src/websockets.c
+@@ -234,7 +234,7 @@ static int callback_mqtt(struct libwebsocket_context *context,
+ 					mosq->pollfd_index = -1;
+ 				}
+ 				mosq->wsi = NULL;
+-				do_disconnect(db, mosq);
++				do_disconnect(db, mosq, "LWS_CALLBACK_CLOSED");
+ 			}
+ 			break;
+ 
+@@ -380,7 +380,7 @@ static int callback_mqtt(struct libwebsocket_context *context,
+ 				mosq->last_msg_in = mosquitto_time();
+ 
+ 				if(rc){
+-					do_disconnect(db, mosq);
++					do_disconnect(db, mosq, "packet handle rc");
+ 					return -1;
+ 				}
+ 			}

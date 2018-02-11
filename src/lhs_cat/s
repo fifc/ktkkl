@@ -1,0 +1,13 @@
+#!/usr/bin/zsh
+set -x
+
+if [[ -z "${CODEIN_GW_HOST}" ]]; then
+  CODEIN_GW_HOST=gw.codein.net
+fi
+
+scp cat.js ${CODEIN_GW_HOST}:codein/cat.js.new
+scp package.json ${CODEIN_GW_HOST}:codein/
+scp test.js ${CODEIN_GW_HOST}:codein/
+scp pg.js ${CODEIN_GW_HOST}:codein/
+scp ../lhs_proto/server/cat.proto ${CODEIN_GW_HOST}:codein/
+

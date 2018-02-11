@@ -1,0 +1,13 @@
+# deb http://ftp.cn.debian.org/debian/ jessie main
+
+#deb http://mirrors.kernel.org/debian/ unstable main
+#deb-src http://mirrors.kernel.org/debian/ unstable main
+deb  http://deb.debian.org/debian unstable main contrib non-free
+deb-src  http://deb.debian.org/debian unstable main contrib non-free
+
+#deb http://mirrors.kernel.org/debian/ stretch-updates main
+#deb-src http://mirrors.kernel.org/debian/ stretch-updates main
+deb  http://deb.debian.org/debian stretch-updates main contrib non-free
+deb-src  http://deb.debian.org/debian stretch-updates main contrib non-free
+deb http://security.debian.org/ stretch/updates main contrib non-free
+deb-src http://security.debian.org/ stretch/updates main contrib non-free

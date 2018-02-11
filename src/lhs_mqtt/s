@@ -1,0 +1,8 @@
+#!/usr/bin/zsh
+set -x
+
+if [[ -z "${CODEIN_GW_HOST}" ]]; then
+  CODEIN_GW_HOST=gw.codein.net
+fi
+
+scp auth_plugin.so ${CODEIN_GW_HOST}:/home/pkg/lib

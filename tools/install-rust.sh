@@ -1,9 +1,12 @@
-cd /opt
+#!/bin/zsh
+
+prefix=/opt/rust
+cd ${prefix} || exit
 old_version=`rustc --version`
 curl -O -C - https://static.rust-lang.org/dist/rust-nightly-x86_64-unknown-linux-gnu.tar.gz || exit
 tar zxf rust-nightly-x86_64-unknown-linux-gnu.tar.gz;rm rust-nightly-x86_64-unknown-linux-gnu.tar.gz
 cd rust-nightly-x86_64-unknown-linux-gnu
-./install.sh --prefix=/opt
+./install.sh --prefix=${prefix}
 cd ..
 rm -rf rust-nightly-x86_64-unknown-linux-gnu
 new_version=`rustc --version`
